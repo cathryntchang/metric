@@ -1,29 +1,140 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, KeyboardAvoidingView, Platform } from "react-native";
-import { router } from "expo-router";
+import React, { useState, useRef, useEffect } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { chatService } from "./services/chatService";
+import { getSurveyById } from "./firebase/firebase";
 
 const userAvatar = "https://randomuser.me/api/portraits/women/2.jpg";
 const noahAvatar = "https://randomuser.me/api/portraits/men/1.jpg";
 
-export default function ChatScreen() {
-  const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([
-    { from: "noah", text: "Hey Danica!" },
-    { from: "noah", text: "This won't take long, your feedback will help!" },
-    { from: "me", text: "hi noah! sure, happy to help" },
-  ]);
+interface Message {
+  id: string;
+  text: string;
+  isUser: boolean;
+}
 
-  const handleSend = () => {
-    if (message.trim()) {
-      setMessages([...messages, { from: "me", text: message }]);
-      setMessage("");
+export default function ChatScreen() {
+  const { surveyId } = useLocalSearchParams();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [surveyTitle, setSurveyTitle] = useState<string>("");
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // Initialize chat with first message
+  useEffect(() => {
+    if (!surveyId) {
+      setError('No survey ID provided');
+      setIsInitializing(false);
+      return;
+    }
+
+    const initializeChat = async () => {
+      try {
+        setIsInitializing(true);
+        setError(null);
+
+        // Load existing messages for this survey
+        const existingMessages = chatService.getContext(surveyId as string);
+        if (existingMessages.length > 0) {
+          const formattedMessages = existingMessages.map(msg => ({
+            id: Date.now().toString() + Math.random(),
+            text: msg.content,
+            isUser: msg.role === 'user'
+          }));
+          setMessages(formattedMessages);
+        } else {
+          // If no existing messages, fetch survey data and create initial message
+          const survey = await getSurveyById(surveyId as string);
+          if (survey) {
+            setSurveyTitle(survey.title);
+            const initialMessage: Message = {
+              id: Date.now().toString(),
+              text: `Hi! I'd like to get your feedback on ${survey.title}. ${survey.context ? `We're looking to ${survey.context.toLowerCase()}.` : 'Your feedback will help us improve and better serve our customers.'} Would you like to share your thoughts?`,
+              isUser: false
+            };
+            setMessages([initialMessage]);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing chat:', error);
+        setError('Failed to load survey. Please try again.');
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initializeChat();
+  }, [surveyId]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated: true });
+    }
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!inputText.trim() || isLoading || !surveyId) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      text: inputText.trim(),
+      isUser: true
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputText("");
+    setIsLoading(true);
+
+    try {
+      const response = await chatService.sendMessage(surveyId as string, userMessage.text);
+      
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: response,
+        isUser: false
+      };
+
+      setMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I encountered an error. Please try again.',
+        isUser: false
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleQuickReply = (text: string) => {
-    setMessages([...messages, { from: "me", text }]);
-    setMessage("");
-  };
+  if (isInitializing) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#7B61FF" />
+        <Text style={styles.loadingText}>Loading survey...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={() => router.replace("../screens/UserHomeScreen.tsx")}
+        >
+          <Text style={styles.retryButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -34,39 +145,48 @@ export default function ChatScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.replace("../screens/UserHomeScreen.tsx") /* or router.back() if stack */}>
+          <TouchableOpacity onPress={() => router.replace("../screens/UserHomeScreen.tsx")}>
             <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Image source={{ uri: noahAvatar }} style={styles.avatar} />
             <View>
               <Text style={styles.name}>Noah</Text>
-              <Text style={styles.subtitle}>Daymi</Text>
+              <Text style={styles.subtitle}>{surveyTitle}</Text>
             </View>
           </View>
           <Text style={styles.time}>10:00</Text>
         </View>
 
         {/* Chat messages */}
-        <ScrollView style={styles.messages} contentContainerStyle={{ paddingBottom: 16 }}>
-          {messages.map((msg, idx) =>
-            msg.from === "noah" ? (
-              <View key={idx} style={styles.messageRow}>
-                <Image source={{ uri: noahAvatar }} style={styles.avatarSmall} />
-                <View>
-                  <Text style={styles.sender}>Noah</Text>
-                  <View style={styles.bubbleLeft}><Text>{msg.text}</Text></View>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.messages} 
+          contentContainerStyle={{ paddingBottom: 16 }}
+        >
+          {messages.map((message) => (
+            <View key={message.id} style={styles.messageRow}>
+              {!message.isUser && <Image source={{ uri: noahAvatar }} style={styles.avatarSmall} />}
+              <View style={{ flex: 1 }}>
+                {!message.isUser && <Text style={styles.sender}>Noah</Text>}
+                {message.isUser && <Text style={styles.senderRight}>You</Text>}
+                <View style={message.isUser ? styles.bubbleRight : styles.bubbleLeft}>
+                  <Text style={message.isUser ? { color: "#fff" } : {}}>{message.text}</Text>
                 </View>
               </View>
-            ) : (
-              <View key={idx} style={[styles.messageRow, { justifyContent: "flex-end" }]}> 
-                <View>
-                  <Text style={styles.senderRight}>You</Text>
-                  <View style={styles.bubbleRight}><Text style={{ color: "#fff" }}>{msg.text}</Text></View>
+              {message.isUser && <Image source={{ uri: userAvatar }} style={styles.avatarSmall} />}
+            </View>
+          ))}
+          {isLoading && (
+            <View style={styles.messageRow}>
+              <Image source={{ uri: noahAvatar }} style={styles.avatarSmall} />
+              <View>
+                <Text style={styles.sender}>Noah</Text>
+                <View style={styles.bubbleLeft}>
+                  <ActivityIndicator size="small" color="#7B61FF" />
                 </View>
-                <Image source={{ uri: userAvatar }} style={styles.avatarSmall} />
               </View>
-            )
+            </View>
           )}
         </ScrollView>
 
@@ -76,23 +196,15 @@ export default function ChatScreen() {
           <TextInput
             style={styles.input}
             placeholder="Type a message"
-            value={message}
-            onChangeText={setMessage}
+            value={inputText}
+            onChangeText={setInputText}
             onSubmitEditing={handleSend}
             returnKeyType="send"
+            editable={!isLoading}
           />
-          <TouchableOpacity onPress={handleSend}>
-            <Text style={styles.send}>➤</Text>
+          <TouchableOpacity onPress={handleSend} disabled={isLoading}>
+            <Text style={[styles.send, isLoading && styles.sendDisabled]}>➤</Text>
           </TouchableOpacity>
-        </View>
-        {/* Quick replies */}
-        <View style={styles.quickReplies}>
-          <TouchableOpacity style={styles.reply} onPress={() => handleQuickReply("I like it!")}><Text>I like it!</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.reply} onPress={() => handleQuickReply("Hm, not the best.")}><Text>Hm, not the best.</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.reply} onPress={() => handleQuickReply("Idk.")}><Text>Idk.</Text></TouchableOpacity>
-          <Text style={styles.emoji}>😍</Text>
-          <Text style={styles.emoji}>😓</Text>
-          <Text style={styles.emoji}>🤔</Text>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -119,7 +231,31 @@ const styles = StyleSheet.create({
   plus: { fontSize: 24, color: "#7B61FF", marginHorizontal: 8 },
   input: { flex: 1, backgroundColor: "#f3f3f3", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, fontSize: 16, marginHorizontal: 8 },
   send: { fontSize: 24, color: "#7B61FF", marginHorizontal: 8 },
-  quickReplies: { flexDirection: "row", alignItems: "center", padding: 8, backgroundColor: "#fff" },
-  reply: { backgroundColor: "#f3f3f3", borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6, marginRight: 8 },
-  emoji: { fontSize: 22, marginHorizontal: 2 },
+  sendDisabled: { color: "#ccc" },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#FF4444',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#7B61FF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 }); 

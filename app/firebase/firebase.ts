@@ -163,7 +163,8 @@ export const createNewSurvey = async (
   companyId: string,
   title: string,
   invitedUsers: string[], // These are usernames
-  questions: { questionText: string, order: number }[]
+  questions: { questionText: string, order: number }[],
+  context: string
 ) => {
   try {
     // First check if company exists
@@ -197,6 +198,7 @@ export const createNewSurvey = async (
     await setDoc(surveyDoc, {
       id: surveyId,
       title,
+      context,
       invitedUsers: validUsers.map(user => ({
         id: user.id,
         username: user.username
@@ -414,6 +416,44 @@ export const getCompanyDetails = async (companyId: string) => {
     return companyDoc.data();
   } catch (error) {
     console.error('Error fetching company details:', error);
+    throw error;
+  }
+};
+
+// Function to get survey by ID
+export const getSurveyById = async (surveyId: string) => {
+  try {
+    const surveyRef = doc(db, 'companies/LEyaRS2Mv7CLzP20K0Pe/surveys', surveyId);
+    const surveyDoc = await getDoc(surveyRef);
+    
+    if (!surveyDoc.exists()) {
+      throw new Error('Survey not found');
+    }
+    
+    return {
+      id: surveyDoc.id,
+      ...surveyDoc.data()
+    };
+  } catch (error) {
+    console.error('Error getting survey:', error);
+    throw error;
+  }
+};
+
+// Function to get survey questions
+export const getSurveyQuestions = async (surveyId: string) => {
+  try {
+    const questionsRef = collection(db, `companies/LEyaRS2Mv7CLzP20K0Pe/surveys/${surveyId}/questions`);
+    const querySnapshot = await getDocs(questionsRef);
+    
+    return querySnapshot.docs
+      .map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      .sort((a, b) => a.order - b.order); // Sort by order
+  } catch (error) {
+    console.error('Error getting survey questions:', error);
     throw error;
   }
 };

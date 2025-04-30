@@ -101,7 +101,8 @@ export default function CreateSurveyScreen() {
         companyId,
         title.trim(),
         invitedUsers,
-        questions.filter(q => q.questionText.trim()) // Only save non-empty questions
+        questions.filter(q => q.questionText.trim()), // Only save non-empty questions
+        context.trim()
       );
       router.back();
     } catch (error: any) {
