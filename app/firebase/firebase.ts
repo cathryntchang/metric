@@ -441,7 +441,7 @@ export const getSurveyById = async (surveyId: string) => {
 };
 
 // Function to get survey questions
-export const getSurveyQuestions = async (surveyId: string) => {
+export const getSurveyQuestions = async (surveyId: string): Promise<{ id: string; questionText: string; order: number }[]> => {
   try {
     const questionsRef = collection(db, `companies/LEyaRS2Mv7CLzP20K0Pe/surveys/${surveyId}/questions`);
     const querySnapshot = await getDocs(questionsRef);
@@ -449,7 +449,8 @@ export const getSurveyQuestions = async (surveyId: string) => {
     return querySnapshot.docs
       .map(doc => ({
         id: doc.id,
-        ...doc.data()
+        questionText: doc.data().questionText,
+        order: doc.data().order
       }))
       .sort((a, b) => a.order - b.order); // Sort by order
   } catch (error) {

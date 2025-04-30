@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image,
 import { router, useLocalSearchParams } from "expo-router";
 import { chatService } from "./services/chatService";
 import { getSurveyById } from "./firebase/firebase";
+import { useAuth } from "./context/AuthContext";
 
 const userAvatar = "https://randomuser.me/api/portraits/women/2.jpg";
 const noahAvatar = "https://randomuser.me/api/portraits/men/1.jpg";
@@ -22,11 +23,19 @@ export default function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [surveyTitle, setSurveyTitle] = useState<string>("");
   const scrollViewRef = useRef<ScrollView>(null);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) {
+      router.replace("/");
+      return;
+    }
+  }, [user]);
 
   // Initialize chat with first message
   useEffect(() => {
-    if (!surveyId) {
-      setError('No survey ID provided');
+    if (!surveyId || !user) {
+      setError('No survey ID or user provided');
       setIsInitializing(false);
       return;
     }
@@ -37,7 +46,7 @@ export default function ChatScreen() {
         setError(null);
 
         // Load existing messages for this survey
-        const existingMessages = chatService.getContext(surveyId as string);
+        const existingMessages = chatService.getContext(surveyId as string, user.id);
         if (existingMessages.length > 0) {
           const formattedMessages = existingMessages.map(msg => ({
             id: Date.now().toString() + Math.random(),
@@ -67,7 +76,7 @@ export default function ChatScreen() {
     };
 
     initializeChat();
-  }, [surveyId]);
+  }, [surveyId, user]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -77,11 +86,11 @@ export default function ChatScreen() {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!inputText.trim() || isLoading || !surveyId) return;
+    if (!inputText.trim() || !user) return;
 
-    const userMessage: Message = {
+    const userMessage = {
       id: Date.now().toString(),
-      text: inputText.trim(),
+      text: inputText,
       isUser: true
     };
 
@@ -90,21 +99,21 @@ export default function ChatScreen() {
     setIsLoading(true);
 
     try {
-      const response = await chatService.sendMessage(surveyId as string, userMessage.text);
+      const response = await chatService.sendMessage(surveyId as string, inputText, user.id);
       
-      const aiMessage: Message = {
+      const assistantMessage = {
         id: (Date.now() + 1).toString(),
         text: response,
         isUser: false
       };
 
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       // Add error message to chat
-      const errorMessage: Message = {
+      const errorMessage = {
         id: (Date.now() + 1).toString(),
-        text: 'Sorry, I encountered an error. Please try again.',
+        text: "I apologize, but I'm having trouble processing your message right now. Please try again.",
         isUser: false
       };
       setMessages(prev => [...prev, errorMessage]);
