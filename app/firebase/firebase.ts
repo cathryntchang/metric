@@ -401,5 +401,22 @@ export const getCompanySurveys = async (companyId: string) => {
   }
 };
 
+// Function to get company details
+export const getCompanyDetails = async (companyId: string) => {
+  try {
+    const companyRef = doc(db, 'companies', companyId);
+    const companyDoc = await getDoc(companyRef);
+    
+    if (!companyDoc.exists()) {
+      throw new Error('Company not found');
+    }
+    
+    return companyDoc.data();
+  } catch (error) {
+    console.error('Error fetching company details:', error);
+    throw error;
+  }
+};
+
 // Export db instance for direct use if needed
 export { db }; 

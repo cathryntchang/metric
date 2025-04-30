@@ -10,16 +10,27 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { router } from "expo-router";
-import { getCompanySurveys } from "../firebase/firebase";
+import { getCompanySurveys, getCompanyDetails } from "../firebase/firebase";
 import { useFocusEffect } from "@react-navigation/native";
 
 export default function SurveyHomeScreen() {
   const [surveys, setSurveys] = useState<any[]>([]);
+  const [companyName, setCompanyName] = useState<string>("");
+
+  const fetchCompanyDetails = async () => {
+    try {
+      const companyId = "LEyaRS2Mv7CLzP20K0Pe"; // Daymi's company ID
+      const companyData = await getCompanyDetails(companyId);
+      setCompanyName(companyData.name || "Company"); // Note: using 'name' instead of 'companyName'
+    } catch (error) {
+      console.error("Error fetching company details:", error);
+      setCompanyName("Company"); // Fallback name
+    }
+  };
 
   const fetchSurveys = async () => {
     try {
-      // For now, using a hardcoded company ID. In a real app, this would come from context or props
-      const companyId = "your-company-id";
+      const companyId = "LEyaRS2Mv7CLzP20K0Pe"; // Daymi's company ID
       const companySurveys = await getCompanySurveys(companyId);
       setSurveys(companySurveys);
     } catch (error) {
@@ -27,9 +38,10 @@ export default function SurveyHomeScreen() {
     }
   };
 
-  // Refresh surveys when screen comes into focus
+  // Refresh data when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
+      fetchCompanyDetails();
       fetchSurveys();
     }, [])
   );
@@ -57,7 +69,7 @@ export default function SurveyHomeScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.header}>
-            <Text style={styles.welcomeText}>~ Hi, Company!</Text>
+            <Text style={styles.welcomeText}>~ Hi, {companyName}!</Text>
             <Text style={styles.title}>Jan 2024</Text>
             <View style={styles.headerButtons}>
               <TouchableOpacity style={styles.iconButton}>
