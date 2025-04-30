@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Modal,
+  TextInput,
 } from "react-native";
 import { router } from "expo-router";
 import { getUserSurveys, withdrawFromSurvey, acceptSurvey } from "../firebase/firebase";
@@ -16,6 +18,9 @@ export default function UserHome() {
   const [activeTab, setActiveTab] = useState("Month");
   const [pendingSurveys, setPendingSurveys] = useState<any[]>([]);
   const [acceptedSurveys, setAcceptedSurveys] = useState<any[]>([]);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [menuVisible, setMenuVisible] = useState(false);
   const { user } = useAuth();
 
   const fetchSurveys = async () => {
@@ -79,6 +84,52 @@ export default function UserHome() {
     );
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: () => {
+            setMenuVisible(false);
+            router.replace("/");
+          }
+        }
+      ]
+    );
+  };
+
+  const filteredSurveys = acceptedSurveys.filter(survey => 
+    survey.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const renderAcceptedSurvey = (survey: any) => (
+    <TouchableOpacity
+      key={survey.id}
+      style={styles.companyCard}
+      onPress={() => router.push(`/chat?surveyId=${survey.id}`)}
+    >
+      <View style={styles.companyLogoPlaceholder} />
+      <View style={styles.companyInfo}>
+        <Text style={styles.companyName}>{survey.title}</Text>
+        <Text style={styles.companyDate}>
+          {new Date(survey.createdAt).toLocaleDateString('en-US', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          })}
+        </Text>
+      </View>
+      <Text style={styles.companyDuration}>5 mins</Text>
+    </TouchableOpacity>
+  );
+
   if (!user) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -95,10 +146,82 @@ export default function UserHome() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.greeting}>~ Hi, {user.username}!</Text>
-          <TouchableOpacity style={styles.searchCircle}>
-            <Text style={styles.searchIcon}>🔍</Text>
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.iconButton}
+              onPress={() => setMenuVisible(true)}
+            >
+              <Text style={styles.iconText}>≡</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.iconButton}
+              onPress={() => setSearchVisible(true)}
+            >
+              <Text style={styles.iconText}>🔍</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Menu Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={menuVisible}
+          onRequestClose={() => setMenuVisible(false)}
+        >
+          <TouchableOpacity 
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setMenuVisible(false)}
+          >
+            <View style={styles.menuContainer}>
+              <TouchableOpacity 
+                style={[styles.menuItem, styles.logoutButton]}
+                onPress={handleLogout}
+              >
+                <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Search Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={searchVisible}
+          onRequestClose={() => setSearchVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.searchContainer}>
+              <View style={styles.searchHeader}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search surveys..."
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoFocus
+                />
+                <TouchableOpacity 
+                  style={styles.closeButton}
+                  onPress={() => {
+                    setSearchVisible(false);
+                    setSearchQuery("");
+                  }}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.searchResults}>
+                {filteredSurveys.length === 0 ? (
+                  <Text style={styles.noResultsText}>No surveys found</Text>
+                ) : (
+                  filteredSurveys.map(renderAcceptedSurvey)
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         {/* Pending Survey Invites */}
         {pendingSurveys.map(survey => (
@@ -146,26 +269,7 @@ export default function UserHome() {
           {acceptedSurveys.length === 0 ? (
             <Text style={styles.noSurveysText}>No accepted surveys yet</Text>
           ) : (
-            acceptedSurveys.map(survey => (
-              <TouchableOpacity
-                key={survey.id}
-                style={styles.companyCard}
-                onPress={() => router.push(`/chat?surveyId=${survey.id}`)}
-              >
-                <View style={styles.companyLogoPlaceholder} />
-                <View style={styles.companyInfo}>
-                  <Text style={styles.companyName}>{survey.title}</Text>
-                  <Text style={styles.companyDate}>
-                    {new Date(survey.createdAt).toLocaleDateString('en-US', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
-                  </Text>
-                </View>
-                <Text style={styles.companyDuration}>5 mins</Text>
-              </TouchableOpacity>
-            ))
+            acceptedSurveys.map(renderAcceptedSurvey)
           )}
         </View>
       </ScrollView>
@@ -178,8 +282,16 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 20 },
   greeting: { fontSize: 16, color: "#222" },
-  searchCircle: { backgroundColor: "#E9ECF6", borderRadius: 24, padding: 8 },
-  searchIcon: { fontSize: 22 },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  iconButton: {
+    padding: 8,
+  },
+  iconText: {
+    fontSize: 20,
+  },
   inviteCard: { backgroundColor: "#F3EEFF", borderRadius: 28, margin: 16, padding: 24, alignItems: "center" },
   inviteLabel: { color: "#222", fontSize: 16, marginBottom: 8, marginTop: 4 },
   inviteTitle: { color: "#3B217F", fontSize: 32, fontWeight: "700", marginBottom: 24 },
@@ -210,5 +322,91 @@ const styles = StyleSheet.create({
     fontSize: 14, 
     marginTop: 20,
     fontStyle: 'italic'
-  }
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-start',
+  },
+  searchContainer: {
+    backgroundColor: 'white',
+    marginTop: 60,
+    marginHorizontal: 20,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    maxHeight: '80%',
+  },
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 16,
+  },
+  closeButton: {
+    marginLeft: 12,
+    padding: 8,
+  },
+  closeButtonText: {
+    fontSize: 18,
+    color: '#666',
+  },
+  searchResults: {
+    maxHeight: '100%',
+  },
+  noResultsText: {
+    textAlign: 'center',
+    color: '#6B6B6B',
+    fontSize: 16,
+    marginTop: 20,
+    fontStyle: 'italic',
+  },
+  menuContainer: {
+    backgroundColor: 'white',
+    marginTop: 60,
+    marginHorizontal: 20,
+    borderRadius: 12,
+    padding: 8,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  menuItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  menuItemText: {
+    fontSize: 16,
+    color: '#232B3A',
+    fontWeight: '500',
+  },
+  logoutButton: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+  },
+  logoutText: {
+    color: '#FF3B30',
+  },
 }); 
