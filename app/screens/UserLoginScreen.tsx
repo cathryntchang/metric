@@ -17,12 +17,14 @@ import { StyledButton } from "../components/StyledButton";
 import { router } from "expo-router";
 import { collection, query, where, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get("window");
 const isSmallDevice = width < 375;
 
 export const UserLoginScreen = () => {
   const [username, setUsername] = useState("");
+  const { setUser } = useAuth();
 
   const handleContinue = async () => {
     if (!username.trim()) {
@@ -53,6 +55,13 @@ export const UserLoginScreen = () => {
       if (!querySnapshot.empty) {
         // Get the user document
         const userDoc = querySnapshot.docs[0];
+        const userData = userDoc.data();
+        
+        // Set the user in auth context
+        setUser({
+          id: userDoc.id,
+          username: userData.username
+        });
         
         // Increment login count
         await updateDoc(doc(usersRef, userDoc.id), {

@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, arrayUnion, query, where } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, arrayUnion, query, where, arrayRemove } from 'firebase/firestore';
 import firebaseConfig from '../../keys.json';
 
 // Initialize Firebase
@@ -304,6 +304,99 @@ export const getUserSurveys = async (username: string) => {
     }));
   } catch (error) {
     console.error('Error fetching user surveys:', error);
+    throw error;
+  }
+};
+
+// Function to withdraw from a survey
+export const withdrawFromSurvey = async (userId: string, surveyId: string) => {
+  try {
+    // Get the survey document to find the company ID
+    const userSurveyRef = doc(db, `users/${userId}/surveys/${surveyId}`);
+    const userSurveyDoc = await getDoc(userSurveyRef);
+    
+    if (!userSurveyDoc.exists()) {
+      throw new Error('Survey not found');
+    }
+
+    const surveyData = userSurveyDoc.data();
+    const companyId = surveyData.companyId;
+
+    // Remove the survey from user's surveys subcollection
+    await deleteDoc(userSurveyRef);
+
+    // Remove the survey ID from user's surveys array
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      surveys: arrayRemove(surveyId)
+    });
+
+    // Remove user from survey's invited users
+    const surveyRef = doc(db, `companies/${companyId}/surveys/${surveyId}`);
+    const surveyDoc = await getDoc(surveyRef);
+    
+    if (surveyDoc.exists()) {
+      const surveyData = surveyDoc.data();
+      const updatedInvitedUsers = surveyData.invitedUsers.filter(
+        (user: { id: string }) => user.id !== userId
+      );
+
+      await updateDoc(surveyRef, {
+        invitedUsers: updatedInvitedUsers
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error withdrawing from survey:', error);
+    throw error;
+  }
+};
+
+// Function to accept a survey
+export const acceptSurvey = async (userId: string, surveyId: string) => {
+  try {
+    // Get the survey document to find the company ID
+    const userSurveyRef = doc(db, `users/${userId}/surveys/${surveyId}`);
+    const userSurveyDoc = await getDoc(userSurveyRef);
+    
+    if (!userSurveyDoc.exists()) {
+      throw new Error('Survey not found');
+    }
+
+    const surveyData = userSurveyDoc.data();
+    const companyId = surveyData.companyId;
+
+    // Update the survey status to accepted in user's surveys subcollection
+    await updateDoc(userSurveyRef, {
+      status: 'accepted'
+    });
+
+    // Update the survey status in the company's survey document
+    const surveyRef = doc(db, `companies/${companyId}/surveys/${surveyId}`);
+    await updateDoc(surveyRef, {
+      status: 'accepted'
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Error accepting survey:', error);
+    throw error;
+  }
+};
+
+// Function to get company surveys
+export const getCompanySurveys = async (companyId: string) => {
+  try {
+    const surveysRef = collection(db, `companies/${companyId}/surveys`);
+    const querySnapshot = await getDocs(surveysRef);
+    
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error fetching company surveys:', error);
     throw error;
   }
 };

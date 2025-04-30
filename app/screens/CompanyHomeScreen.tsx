@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,42 +10,46 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { router } from "expo-router";
+import { getCompanySurveys } from "../firebase/firebase";
+import { useFocusEffect } from "@react-navigation/native";
 
 export default function SurveyHomeScreen() {
-  const surveys = [
-    {
-      id: 1,
-      title: "Tagging Feature",
-      description: "A sales presentation with a potential client. The meeting is set to take place in London, and the appli...",
-      peopleCount: 128,
-      date: "This month, April 2025",
-      borderColor: "#B6B97A"
-    },
-    {
-      id: 2,
-      title: "Conversational Journaling Feature",
-      description: "A sales presentation with a potential client. The meeting is set to take place in London, and the appli...",
-      peopleCount: 128,
-      date: "Last month, March 2025",
-      borderColor: "#B6A7E6"
-    },
-    {
-      id: 3,
-      title: "Daily Summary Feature",
-      description: "A sales presentation with a potential client. The meeting is set to take place in London, and the appli...",
-      peopleCount: 128,
-      date: "Last month, March 2025",
-      borderColor: "#7AD6B9"
-    },
-    {
-      id: 4,
-      title: "Context-Aware Follow-Ups Feature",
-      description: "A sales presentation with a potential client. The meeting is set to take place in London, and the appli...",
-      peopleCount: 128,
-      date: "Last month, March 2025",
-      borderColor: "#E6A7A7"
+  const [surveys, setSurveys] = useState<any[]>([]);
+
+  const fetchSurveys = async () => {
+    try {
+      // For now, using a hardcoded company ID. In a real app, this would come from context or props
+      const companyId = "your-company-id";
+      const companySurveys = await getCompanySurveys(companyId);
+      setSurveys(companySurveys);
+    } catch (error) {
+      console.error("Error fetching surveys:", error);
     }
-  ];
+  };
+
+  // Refresh surveys when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchSurveys();
+    }, [])
+  );
+
+  const getSurveyBorderColor = (index: number) => {
+    const colors = ["#B6B97A", "#B6A7E6", "#7AD6B9", "#E6A7A7"];
+    return colors[index % colors.length];
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const isThisMonth = date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+    
+    if (isThisMonth) {
+      return "This month, " + date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    } else {
+      return "Last month, " + date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+  };
 
   return (
     <>
@@ -53,7 +57,7 @@ export default function SurveyHomeScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           <View style={styles.header}>
-            <Text style={styles.welcomeText}>~ Hi, Noah from Daymi!</Text>
+            <Text style={styles.welcomeText}>~ Hi, Company!</Text>
             <Text style={styles.title}>Jan 2024</Text>
             <View style={styles.headerButtons}>
               <TouchableOpacity style={styles.iconButton}>
@@ -66,46 +70,62 @@ export default function SurveyHomeScreen() {
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.sectionHeader}>This month, <Text style={styles.sectionHeaderBold}>April 2025</Text></Text>
-            {surveys.filter(s => s.date === "This month, April 2025").map((survey, index) => (
-              <View key={survey.id} style={[styles.surveyCard, { borderColor: survey.borderColor }]}> 
-                <View style={styles.surveyHeader}>
-                  <Text style={styles.surveyPeople}><Text style={styles.surveyPeopleIcon}>📦</Text> <Text style={styles.surveyPeopleText}>{survey.peopleCount} people surveyed</Text></Text>
-                  <TouchableOpacity style={styles.moreButton}>
-                    <Text style={styles.iconText}>⋮</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.surveyTitle}>{survey.title}</Text>
-                <Text style={styles.surveyDescription}>{survey.description}</Text>
-                <TouchableOpacity 
-                  style={styles.metricsButton}
-                  onPress={() => router.push("../screens/MetricScreen")}
-                >
-                  <Text style={styles.metricsButtonText}>See Metrics</Text>
-                  <Text style={styles.metricsButtonIcon}>＋</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-            <Text style={styles.sectionHeaderLast}>Last month, <Text style={styles.sectionHeaderBold}>March 2025</Text></Text>
-            {surveys.filter(s => s.date === "Last month, March 2025").map((survey, index) => (
-              <View key={survey.id} style={[styles.surveyCard, { borderColor: survey.borderColor }]}> 
-                <View style={styles.surveyHeader}>
-                  <Text style={styles.surveyPeople}><Text style={styles.surveyPeopleIcon}>📦</Text> <Text style={styles.surveyPeopleText}>{survey.peopleCount} people surveyed</Text></Text>
-                  <TouchableOpacity style={styles.moreButton}>
-                    <Text style={styles.iconText}>⋮</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.surveyTitle}>{survey.title}</Text>
-                <Text style={styles.surveyDescription}>{survey.description}</Text>
-                <TouchableOpacity 
-                  style={styles.metricsButton}
-                  onPress={() => router.push("../screens/MetricScreen")}
-                >
-                  <Text style={styles.metricsButtonText}>See Metrics</Text>
-                  <Text style={styles.metricsButtonIcon}>＋</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+            {surveys.length === 0 ? (
+              <Text style={styles.noSurveysText}>No surveys yet. Create your first survey!</Text>
+            ) : (
+              <>
+                <Text style={styles.sectionHeader}>This month, <Text style={styles.sectionHeaderBold}>
+                  {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </Text></Text>
+                {surveys.filter(s => formatDate(s.createdAt) === `This month, ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`).map((survey, index) => (
+                  <View key={survey.id} style={[styles.surveyCard, { borderColor: getSurveyBorderColor(index) }]}> 
+                    <View style={styles.surveyHeader}>
+                      <Text style={styles.surveyPeople}>
+                        <Text style={styles.surveyPeopleIcon}>📦</Text> 
+                        <Text style={styles.surveyPeopleText}>{survey.invitedUsers?.length || 0} people surveyed</Text>
+                      </Text>
+                      <TouchableOpacity style={styles.moreButton}>
+                        <Text style={styles.iconText}>⋮</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.surveyTitle}>{survey.title}</Text>
+                    <Text style={styles.surveyDescription}>{survey.description || "No description provided"}</Text>
+                    <TouchableOpacity 
+                      style={styles.metricsButton}
+                      onPress={() => router.push(`/screens/MetricScreen?surveyId=${survey.id}`)}
+                    >
+                      <Text style={styles.metricsButtonText}>See Metrics</Text>
+                      <Text style={styles.metricsButtonIcon}>＋</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <Text style={styles.sectionHeaderLast}>Last month, <Text style={styles.sectionHeaderBold}>
+                  {new Date(new Date().setMonth(new Date().getMonth() - 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </Text></Text>
+                {surveys.filter(s => formatDate(s.createdAt) === `Last month, ${new Date(new Date().setMonth(new Date().getMonth() - 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`).map((survey, index) => (
+                  <View key={survey.id} style={[styles.surveyCard, { borderColor: getSurveyBorderColor(index) }]}> 
+                    <View style={styles.surveyHeader}>
+                      <Text style={styles.surveyPeople}>
+                        <Text style={styles.surveyPeopleIcon}>📦</Text> 
+                        <Text style={styles.surveyPeopleText}>{survey.invitedUsers?.length || 0} people surveyed</Text>
+                      </Text>
+                      <TouchableOpacity style={styles.moreButton}>
+                        <Text style={styles.iconText}>⋮</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.surveyTitle}>{survey.title}</Text>
+                    <Text style={styles.surveyDescription}>{survey.description || "No description provided"}</Text>
+                    <TouchableOpacity 
+                      style={styles.metricsButton}
+                      onPress={() => router.push(`/screens/MetricScreen?surveyId=${survey.id}`)}
+                    >
+                      <Text style={styles.metricsButtonText}>See Metrics</Text>
+                      <Text style={styles.metricsButtonIcon}>＋</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </>
+            )}
           </ScrollView>
 
           <View style={styles.bottomNav}>
@@ -316,4 +336,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: -2,
   },
+  noSurveysText: {
+    textAlign: 'center',
+    color: '#6B6B6B',
+    fontSize: 16,
+    marginTop: 40,
+    fontStyle: 'italic'
+  }
 }); 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,44 +6,123 @@ import {
   SafeAreaView,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
-
-const companies = [
-  { id: 1, name: "Beli", date: "12 August 2024", duration: "10 mins" },
-  { id: 2, name: "JP Morgan", date: "07 August 2024", duration: "5 mins" },
-  { id: 3, name: "MDB", date: "07 August 2024", duration: "5 mins" },
-];
+import { getUserSurveys, withdrawFromSurvey, acceptSurvey } from "../firebase/firebase";
+import { useAuth } from "../context/AuthContext";
 
 export default function UserHome() {
   const [activeTab, setActiveTab] = useState("Month");
+  const [pendingSurveys, setPendingSurveys] = useState<any[]>([]);
+  const [acceptedSurveys, setAcceptedSurveys] = useState<any[]>([]);
+  const { user } = useAuth();
+
+  const fetchSurveys = async () => {
+    if (!user) return;
+    
+    try {
+      const surveys = await getUserSurveys(user.username);
+      const pending = surveys.filter(survey => survey.status === 'pending');
+      const accepted = surveys.filter(survey => survey.status === 'accepted');
+      setPendingSurveys(pending);
+      setAcceptedSurveys(accepted);
+    } catch (error) {
+      console.error("Error fetching surveys:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchSurveys();
+  }, [user]);
+
+  const handleStart = async (surveyId: string) => {
+    if (!user) return;
+
+    try {
+      await acceptSurvey(user.id, surveyId);
+      await fetchSurveys(); // Refresh the lists
+      router.push(`/chat?surveyId=${surveyId}`);
+    } catch (error) {
+      console.error("Error accepting survey:", error);
+      Alert.alert("Error", "Failed to start survey. Please try again.");
+    }
+  };
+
+  const handleWithdraw = async (surveyId: string) => {
+    if (!user) return;
+
+    Alert.alert(
+      "Withdraw from Survey",
+      "Are you sure you want to withdraw from this survey?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Withdraw",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await withdrawFromSurvey(user.id, surveyId);
+              // Refresh the surveys list
+              await fetchSurveys();
+              Alert.alert("Success", "You have been withdrawn from the survey.");
+            } catch (error) {
+              console.error("Error withdrawing from survey:", error);
+              Alert.alert("Error", "Failed to withdraw from survey. Please try again.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <Text style={styles.greeting}>Please log in to view your surveys</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.scrollView}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.greeting}>~ Hi, Danica!</Text>
+          <Text style={styles.greeting}>~ Hi, {user.username}!</Text>
           <TouchableOpacity style={styles.searchCircle}>
             <Text style={styles.searchIcon}>🔍</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Invite Card */}
-        <View style={styles.inviteCard}>
-          <Text style={styles.inviteLabel}>New Invite!</Text>
-          <Text style={styles.inviteTitle}>Daymi</Text>
-          <View style={styles.inviteButtonsRow}>
-            <TouchableOpacity style={styles.startButton}>
-              <Text style={styles.startButtonText}>Start</Text>
-              <Text style={styles.buttonIcon}>⬇️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.withdrawButton}>
-              <Text style={styles.withdrawButtonText}>Withdraw</Text>
-              <Text style={styles.buttonIcon}>↗️</Text>
-            </TouchableOpacity>
+        {/* Pending Survey Invites */}
+        {pendingSurveys.map(survey => (
+          <View key={survey.id} style={styles.inviteCard}>
+            <Text style={styles.inviteLabel}>New Invite!</Text>
+            <Text style={styles.inviteTitle}>{survey.title}</Text>
+            <View style={styles.inviteButtonsRow}>
+              <TouchableOpacity 
+                style={styles.startButton}
+                onPress={() => handleStart(survey.id)}
+              >
+                <Text style={styles.startButtonText}>Start</Text>
+                <Text style={styles.buttonIcon}>⬇️</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.withdrawButton}
+                onPress={() => handleWithdraw(survey.id)}
+              >
+                <Text style={styles.withdrawButtonText}>Withdraw</Text>
+                <Text style={styles.buttonIcon}>↗️</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        ))}
 
         {/* Recent Conversations */}
         <View style={styles.section}>
@@ -64,20 +143,30 @@ export default function UserHome() {
               </TouchableOpacity>
             ))}
           </View>
-          {companies.map(company => (
-            <TouchableOpacity
-              key={company.id}
-              style={styles.companyCard}
-              onPress={() => router.push('/chat')}
-            >
-              <View style={styles.companyLogoPlaceholder} />
-              <View style={styles.companyInfo}>
-                <Text style={styles.companyName}>{company.name}</Text>
-                <Text style={styles.companyDate}>{company.date}</Text>
-              </View>
-              <Text style={styles.companyDuration}>{company.duration}</Text>
-            </TouchableOpacity>
-          ))}
+          {acceptedSurveys.length === 0 ? (
+            <Text style={styles.noSurveysText}>No accepted surveys yet</Text>
+          ) : (
+            acceptedSurveys.map(survey => (
+              <TouchableOpacity
+                key={survey.id}
+                style={styles.companyCard}
+                onPress={() => router.push(`/chat?surveyId=${survey.id}`)}
+              >
+                <View style={styles.companyLogoPlaceholder} />
+                <View style={styles.companyInfo}>
+                  <Text style={styles.companyName}>{survey.title}</Text>
+                  <Text style={styles.companyDate}>
+                    {new Date(survey.createdAt).toLocaleDateString('en-US', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                </View>
+                <Text style={styles.companyDuration}>5 mins</Text>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -114,5 +203,12 @@ const styles = StyleSheet.create({
   companyInfo: { flex: 1 },
   companyName: { fontWeight: "600", fontSize: 16, color: "#232B3A" },
   companyDate: { color: "#6B6B6B", fontSize: 13 },
-  companyDuration: { color: "#232B3A", fontWeight: "600", fontSize: 15 }
+  companyDuration: { color: "#232B3A", fontWeight: "600", fontSize: 15 },
+  noSurveysText: { 
+    textAlign: 'center', 
+    color: '#6B6B6B', 
+    fontSize: 14, 
+    marginTop: 20,
+    fontStyle: 'italic'
+  }
 }); 
