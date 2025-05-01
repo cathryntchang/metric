@@ -10,7 +10,6 @@ export default function RootLayout() {
       <Stack.Screen name="company-login" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="create-survey" />
-      <Stack.Screen name="screens/MetricScreen" />
     </Stack>
     </AuthProvider>
   );

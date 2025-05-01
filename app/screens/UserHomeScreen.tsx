@@ -14,10 +14,17 @@ import { router } from "expo-router";
 import { getUserSurveys, withdrawFromSurvey, acceptSurvey } from "../firebase/firebase";
 import { useAuth } from "../context/AuthContext";
 
+interface Survey {
+  id: string;
+  title: string;
+  status: 'pending' | 'accepted';
+  createdAt: string | number;
+}
+
 export default function UserHome() {
   const [activeTab, setActiveTab] = useState("Month");
-  const [pendingSurveys, setPendingSurveys] = useState<any[]>([]);
-  const [acceptedSurveys, setAcceptedSurveys] = useState<any[]>([]);
+  const [pendingSurveys, setPendingSurveys] = useState<Survey[]>([]);
+  const [acceptedSurveys, setAcceptedSurveys] = useState<Survey[]>([]);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [menuVisible, setMenuVisible] = useState(false);
@@ -27,7 +34,7 @@ export default function UserHome() {
     if (!user) return;
     
     try {
-      const surveys = await getUserSurveys(user.username);
+      const surveys = await getUserSurveys(user.username) as Survey[];
       const pending = surveys.filter(survey => survey.status === 'pending');
       const accepted = surveys.filter(survey => survey.status === 'accepted');
       setPendingSurveys(pending);
@@ -126,7 +133,6 @@ export default function UserHome() {
           })}
         </Text>
       </View>
-      <Text style={styles.companyDuration}>5 mins</Text>
     </TouchableOpacity>
   );
 
@@ -315,7 +321,6 @@ const styles = StyleSheet.create({
   companyInfo: { flex: 1 },
   companyName: { fontWeight: "600", fontSize: 16, color: "#232B3A" },
   companyDate: { color: "#6B6B6B", fontSize: 13 },
-  companyDuration: { color: "#232B3A", fontWeight: "600", fontSize: 15 },
   noSurveysText: { 
     textAlign: 'center', 
     color: '#6B6B6B', 

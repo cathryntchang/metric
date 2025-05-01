@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, arrayUnion, query, where, arrayRemove } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, arrayUnion, query, where, arrayRemove, deleteDoc } from 'firebase/firestore';
 import firebaseConfig from '../../keys.json';
 
 // Initialize Firebase
@@ -455,6 +455,17 @@ export const getSurveyQuestions = async (surveyId: string): Promise<{ id: string
       .sort((a, b) => a.order - b.order); // Sort by order
   } catch (error) {
     console.error('Error getting survey questions:', error);
+    throw error;
+  }
+};
+
+export const deleteSurvey = async (surveyId: string) => {
+  try {
+    const companyId = "LEyaRS2Mv7CLzP20K0Pe"; // Daymi's company ID
+    const surveyRef = doc(db, `companies/${companyId}/surveys`, surveyId);
+    await deleteDoc(surveyRef);
+  } catch (error) {
+    console.error("Error deleting survey:", error);
     throw error;
   }
 };

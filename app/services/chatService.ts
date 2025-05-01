@@ -7,6 +7,7 @@ interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  questionId?: string;
 }
 
 interface ChatContext {
@@ -123,39 +124,56 @@ export const chatService = {
           if (message.toLowerCase().includes('yes') || 
               message.toLowerCase().includes('sure') || 
               message.toLowerCase().includes('ok') || 
-              message.toLowerCase().includes('alright') ||
-              message.toLowerCase().includes('like it') ||
-              message.toLowerCase() === 'maybe') {
+              message.toLowerCase().includes('alright')) {
             context.conversationState = 'asking';
             context.currentQuestionIndex = 0;
-            const nextQuestion = context.questions[0];
-            const assistantMessage = {
-              role: 'assistant' as const,
-              content: nextQuestion.questionText,
-              timestamp: Date.now()
-            };
-            context.messages.push(assistantMessage);
             
-            // Update Firebase with the assistant's message
-            await updateDoc(chatRef, {
-              messages: arrayUnion(assistantMessage)
-            });
+            // Send two welcoming messages instead of one
+            const welcomeMessages = [
+              {
+                role: 'assistant' as const,
+                content: "Great! I'm excited to hear your thoughts.",
+                timestamp: Date.now()
+              },
+              {
+                role: 'assistant' as const,
+                content: context.questions[0].questionText,
+                timestamp: Date.now() + 1000,
+                questionId: context.questions[0].id
+              }
+            ];
             
-            return nextQuestion.questionText;
+            // Add messages to context and Firebase
+            context.messages.push(...welcomeMessages);
+            for (const msg of welcomeMessages) {
+              await updateDoc(chatRef, {
+                messages: arrayUnion(msg)
+              });
+            }
+            
+            return welcomeMessages.map(m => m.content).join('||');
           } else {
-            const declineMessage = {
-              role: 'assistant' as const,
-              content: "I understand. Let me know if you change your mind and would like to participate in the survey.",
-              timestamp: Date.now()
-            };
-            context.messages.push(declineMessage);
+            const declineMessages = [
+              {
+                role: 'assistant' as const,
+                content: "I understand. No problem at all!",
+                timestamp: Date.now()
+              },
+              {
+                role: 'assistant' as const,
+                content: "Let me know if you change your mind and would like to participate later.",
+                timestamp: Date.now() + 1000
+              }
+            ];
             
-            // Update Firebase with the assistant's message
-            await updateDoc(chatRef, {
-              messages: arrayUnion(declineMessage)
-            });
+            context.messages.push(...declineMessages);
+            for (const msg of declineMessages) {
+              await updateDoc(chatRef, {
+                messages: arrayUnion(msg)
+              });
+            }
             
-            return declineMessage.content;
+            return declineMessages.map(m => m.content).join('||');
           }
 
         case 'asking':
@@ -168,33 +186,34 @@ export const chatService = {
             ...context.messages,
             {
               role: 'system',
-              content: 'You are discussing the current survey question. Engage naturally with the user\'s response. If the conversation about this topic seems complete, naturally transition to the next question.',
+              content: 'You are having a natural conversation about the survey question. Break your responses into 2-3 short messages. Use casual, friendly language. If the topic seems complete, naturally transition to the next question.',
               timestamp: Date.now()
             }
           ]);
 
-          const assistantMessage = {
+          // Split GPT response into multiple messages
+          const responseMessages = gptResponse.split('||').map(content => ({
             role: 'assistant' as const,
-            content: gptResponse,
+            content: content.trim(),
             timestamp: Date.now()
-          };
-          context.messages.push(assistantMessage);
-          
-          // Update Firebase with the assistant's message
-          await updateDoc(chatRef, {
-            messages: arrayUnion(assistantMessage)
-          });
+          }));
+
+          // Add all messages to context and Firebase
+          context.messages.push(...responseMessages);
+          for (const msg of responseMessages) {
+            await updateDoc(chatRef, {
+              messages: arrayUnion(msg)
+            });
+          }
 
           // Check if we should move to the next question
           const shouldMoveToNextQuestion = 
             gptResponse.toLowerCase().includes('next question') || 
             gptResponse.toLowerCase().includes('moving on') ||
             gptResponse.toLowerCase().includes('let\'s move on') ||
-            // Add a message count check to prevent getting stuck
             context.messages.filter(m => m.role === 'user').length > 3;
 
           if (shouldMoveToNextQuestion) {
-            // If we've asked all questions, move to complete state
             if (context.currentQuestionIndex >= context.questions.length - 1) {
               context.conversationState = 'complete';
               return gptResponse;
@@ -203,22 +222,31 @@ export const chatService = {
             // Move to next question
             context.currentQuestionIndex++;
             const nextQuestion = context.questions[context.currentQuestionIndex];
-            console.log('Moving to next question:', nextQuestion);
+            const transitionMessages = [
+              {
+                role: 'assistant' as const,
+                content: "Great, thanks for sharing that.",
+                timestamp: Date.now()
+              },
+              {
+                role: 'assistant' as const,
+                content: nextQuestion.questionText,
+                timestamp: Date.now() + 1000,
+                questionId: nextQuestion.id
+              }
+            ];
             
-            const nextQuestionMessage = {
-              role: 'assistant' as const,
-              content: nextQuestion.questionText,
-              timestamp: Date.now()
-            };
-            context.messages.push(nextQuestionMessage);
+            context.messages.push(...transitionMessages);
+            for (const msg of transitionMessages) {
+              await updateDoc(chatRef, {
+                messages: arrayUnion(msg)
+              });
+            }
             
-            // Update Firebase with the next question
-            await updateDoc(chatRef, {
-              messages: arrayUnion(nextQuestionMessage)
-            });
-            
-            return nextQuestion.questionText;
+            return [...responseMessages, ...transitionMessages].map(m => m.content).join('||');
           }
+
+          return gptResponse;
 
         case 'complete':
           // Continue conversation with GPT responses

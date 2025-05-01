@@ -13,7 +13,7 @@ import {
   TextInput,
 } from "react-native";
 import { router } from "expo-router";
-import { getCompanySurveys, getCompanyDetails } from "../firebase/firebase";
+import { getCompanySurveys, getCompanyDetails, deleteSurvey } from "../firebase/firebase";
 import { useFocusEffect } from "@react-navigation/native";
 
 export default function SurveyHomeScreen() {
@@ -22,6 +22,8 @@ export default function SurveyHomeScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSurveyId, setSelectedSurveyId] = useState<string | null>(null);
+  const [surveyMenuVisible, setSurveyMenuVisible] = useState(false);
 
   const fetchCompanyDetails = async () => {
     try {
@@ -90,6 +92,35 @@ export default function SurveyHomeScreen() {
     );
   };
 
+  const handleDeleteSurvey = async (surveyId: string) => {
+    Alert.alert(
+      "Delete Survey",
+      "Are you sure you want to delete this survey? This action cannot be undone.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => setSurveyMenuVisible(false)
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteSurvey(surveyId);
+              setSurveyMenuVisible(false);
+              // Refresh the surveys list
+              fetchSurveys();
+            } catch (error) {
+              console.error("Error deleting survey:", error);
+              Alert.alert("Error", "Failed to delete survey. Please try again.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const filteredSurveys = surveys.filter(survey => 
     survey.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -100,14 +131,24 @@ export default function SurveyHomeScreen() {
         <View style={styles.surveyHeader}>
           <Text style={styles.surveyPeople}>
             <Text style={styles.surveyPeopleIcon}>📦</Text> 
-            <Text style={styles.surveyPeopleText}>{survey.invitedUsers?.length || 0} people surveyed</Text>
+            <Text style={styles.surveyPeopleText}>
+              {survey.respondentCount || 0} {(survey.respondentCount || 0) === 1 ? 'response' : 'responses'}
+            </Text>
           </Text>
-          <TouchableOpacity style={styles.moreButton}>
+          <TouchableOpacity 
+            style={styles.moreButton}
+            onPress={() => {
+              setSelectedSurveyId(survey.id);
+              setSurveyMenuVisible(true);
+            }}
+          >
             <Text style={styles.iconText}>⋮</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.surveyTitle}>{survey.title}</Text>
-        <Text style={styles.surveyDescription}>{survey.description || "No description provided"}</Text>
+        <Text style={styles.surveyDescription}>
+          {survey.context ? `Looking to ${survey.context.toLowerCase()}` : "Looking for general feedback"}
+        </Text>
         <TouchableOpacity 
           style={styles.metricsButton}
           onPress={() => router.push(`/screens/MetricScreen?surveyId=${survey.id}`)}
@@ -199,6 +240,29 @@ export default function SurveyHomeScreen() {
                   onPress={handleLogout}
                 >
                   <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+
+          {/* Survey Menu Modal */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={surveyMenuVisible}
+            onRequestClose={() => setSurveyMenuVisible(false)}
+          >
+            <TouchableOpacity 
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => setSurveyMenuVisible(false)}
+            >
+              <View style={styles.menuContainer}>
+                <TouchableOpacity 
+                  style={[styles.menuItem, styles.deleteButton]}
+                  onPress={() => selectedSurveyId && handleDeleteSurvey(selectedSurveyId)}
+                >
+                  <Text style={[styles.menuItemText, styles.deleteText]}>Delete Survey</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
@@ -521,5 +585,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 20,
     fontStyle: 'italic',
+  },
+  deleteButton: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+  },
+  deleteText: {
+    color: '#FF3B30',
   },
 }); 
