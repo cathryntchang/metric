@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image,
 import { router, useLocalSearchParams } from "expo-router";
 import { chatService } from "./services/chatService";
 import { getSurveyById } from "./firebase/firebase";
+import { useAuth } from "./context/AuthContext";
 
 const userAvatar = "https://randomuser.me/api/portraits/women/2.jpg";
 const noahAvatar = "https://randomuser.me/api/portraits/men/1.jpg";
@@ -11,6 +12,12 @@ interface Message {
   id: string;
   text: string;
   isUser: boolean;
+}
+
+interface Survey {
+  id: string;
+  title: string;
+  context?: string;
 }
 
 export default function ChatScreen() {
@@ -22,11 +29,19 @@ export default function ChatScreen() {
   const [error, setError] = useState<string | null>(null);
   const [surveyTitle, setSurveyTitle] = useState<string>("");
   const scrollViewRef = useRef<ScrollView>(null);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) {
+      router.replace("/");
+      return;
+    }
+  }, [user]);
 
   // Initialize chat with first message
   useEffect(() => {
-    if (!surveyId) {
-      setError('No survey ID provided');
+    if (!surveyId || !user) {
+      setError('No survey ID or user provided');
       setIsInitializing(false);
       return;
     }
@@ -37,7 +52,7 @@ export default function ChatScreen() {
         setError(null);
 
         // Load existing messages for this survey
-        const existingMessages = chatService.getContext(surveyId as string);
+        const existingMessages = chatService.getContext(surveyId as string, user.id);
         if (existingMessages.length > 0) {
           const formattedMessages = existingMessages.map(msg => ({
             id: Date.now().toString() + Math.random(),
@@ -47,7 +62,7 @@ export default function ChatScreen() {
           setMessages(formattedMessages);
         } else {
           // If no existing messages, fetch survey data and create initial message
-          const survey = await getSurveyById(surveyId as string);
+          const survey = await getSurveyById(surveyId as string) as Survey;
           if (survey) {
             setSurveyTitle(survey.title);
             const initialMessage: Message = {
@@ -67,7 +82,7 @@ export default function ChatScreen() {
     };
 
     initializeChat();
-  }, [surveyId]);
+  }, [surveyId, user]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -77,11 +92,11 @@ export default function ChatScreen() {
   }, [messages]);
 
   const handleSend = async () => {
-    if (!inputText.trim() || isLoading || !surveyId) return;
+    if (!inputText.trim() || !user) return;
 
-    const userMessage: Message = {
+    const userMessage = {
       id: Date.now().toString(),
-      text: inputText.trim(),
+      text: inputText,
       isUser: true
     };
 
@@ -90,21 +105,21 @@ export default function ChatScreen() {
     setIsLoading(true);
 
     try {
-      const response = await chatService.sendMessage(surveyId as string, userMessage.text);
+      const response = await chatService.sendMessage(surveyId as string, inputText, user.id);
       
-      const aiMessage: Message = {
+      const assistantMessage = {
         id: (Date.now() + 1).toString(),
         text: response,
         isUser: false
       };
 
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       // Add error message to chat
-      const errorMessage: Message = {
+      const errorMessage = {
         id: (Date.now() + 1).toString(),
-        text: 'Sorry, I encountered an error. Please try again.',
+        text: "I apologize, but I'm having trouble processing your message right now. Please try again.",
         isUser: false
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -192,6 +207,47 @@ export default function ChatScreen() {
 
         {/* Input area */}
         <View style={styles.inputRow}>
+          {/* Quick Response Buttons */}
+          <View style={styles.quickResponsesRow}>
+            {['I don\'t like it', 'I like it', 'Maybe'].map((text) => (
+              <TouchableOpacity
+                key={text}
+                style={styles.quickResponseButton}
+                onPress={async () => {
+                  if (isLoading || !surveyId) return;
+                  const userMessage = {
+                    id: Date.now().toString(),
+                    text,
+                    isUser: true
+                  };
+                  setMessages(prev => [...prev, userMessage]);
+                  setInputText("");
+                  setIsLoading(true);
+                  try {
+                    const response = await chatService.sendMessage(surveyId as string, text);
+                    const aiMessage = {
+                      id: (Date.now() + 1).toString(),
+                      text: response,
+                      isUser: false
+                    };
+                    setMessages(prev => [...prev, aiMessage]);
+                  } catch (error) {
+                    const errorMessage = {
+                      id: (Date.now() + 1).toString(),
+                      text: 'Sorry, I encountered an error. Please try again.',
+                      isUser: false
+                    };
+                    setMessages(prev => [...prev, errorMessage]);
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+              >
+                <Text style={styles.quickResponseText}>{text}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <TouchableOpacity><Text style={styles.plus}>+</Text></TouchableOpacity>
           <TextInput
             style={styles.input}
@@ -227,7 +283,14 @@ const styles = StyleSheet.create({
   senderRight: { fontWeight: "600", fontSize: 13, color: "#3B217F", textAlign: "right" },
   bubbleLeft: { backgroundColor: "#f3f3f3", borderRadius: 16, padding: 10, marginBottom: 4, maxWidth: 220 },
   bubbleRight: { backgroundColor: "#7B61FF", borderRadius: 16, padding: 10, marginBottom: 4, maxWidth: 220, alignSelf: "flex-end" },
-  inputRow: { flexDirection: "row", alignItems: "center", padding: 8, borderTopWidth: 1, borderColor: "#eee", backgroundColor: "#fff" },
+  inputRow: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    padding: 12,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderColor: "#eee",
+  },
   plus: { fontSize: 24, color: "#7B61FF", marginHorizontal: 8 },
   input: { flex: 1, backgroundColor: "#f3f3f3", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, fontSize: 16, marginHorizontal: 8 },
   send: { fontSize: 24, color: "#7B61FF", marginHorizontal: 8 },
@@ -257,5 +320,31 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  quickResponsesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderColor: '#eee',
+  },
+  quickResponseButton: {
+    backgroundColor: '#F0EEFF',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#7B61FF',
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  quickResponseText: {
+    color: '#3B217F',
+    fontWeight: '600',
+    fontSize: 14,
+    textAlign: 'center',
   },
 }); 
