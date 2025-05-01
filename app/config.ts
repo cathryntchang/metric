@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 const OPENAI_API_KEY = Constants.expoConfig?.extra?.openaiApiKey;
 
 if (!OPENAI_API_KEY) {
-  console.warn('Warning: OPENAI_API_KEY is not set in app.config.js');
+  console.error('Error: OPENAI_API_KEY is not set in app.config.js');
 }
 
 export const config = {

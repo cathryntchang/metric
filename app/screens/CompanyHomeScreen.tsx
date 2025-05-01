@@ -100,7 +100,9 @@ export default function SurveyHomeScreen() {
         <View style={styles.surveyHeader}>
           <Text style={styles.surveyPeople}>
             <Text style={styles.surveyPeopleIcon}>📦</Text> 
-            <Text style={styles.surveyPeopleText}>{survey.invitedUsers?.length || 0} people surveyed</Text>
+            <Text style={styles.surveyPeopleText}>
+              {survey.respondentCount || 0} {(survey.respondentCount || 0) === 1 ? 'response' : 'responses'}
+            </Text>
           </Text>
           <TouchableOpacity style={styles.moreButton}>
             <Text style={styles.iconText}>⋮</Text>

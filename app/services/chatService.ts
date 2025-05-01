@@ -7,6 +7,7 @@ interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  questionId?: string;
 }
 
 interface ChatContext {
@@ -130,7 +131,8 @@ export const chatService = {
             const assistantMessage = {
               role: 'assistant' as const,
               content: nextQuestion.questionText,
-              timestamp: Date.now()
+              timestamp: Date.now(),
+              questionId: nextQuestion.id
             };
             context.messages.push(assistantMessage);
             
@@ -206,7 +208,8 @@ export const chatService = {
             const nextQuestionMessage = {
               role: 'assistant' as const,
               content: nextQuestion.questionText,
-              timestamp: Date.now()
+              timestamp: Date.now(),
+              questionId: nextQuestion.id
             };
             context.messages.push(nextQuestionMessage);
             

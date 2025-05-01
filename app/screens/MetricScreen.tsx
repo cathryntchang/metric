@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,25 +6,61 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { analysisService } from "../services/analysisService";
+import { getSurveyById } from "../firebase/firebase";
 
 export default function SurveySummaryScreen() {
-  const keywords1 = [
-    { id: 1, text: "Too bright", color: "#FFB800" },
-    { id: 2, text: "Crowded", color: "#9747FF" },
-    { id: 3, text: "Love it!", color: "#FF4747" },
-    { id: 4, text: "Creative", color: "#666666" },
-    { id: 5, text: "Meh...", color: "#1E7F2C" },
-  ];
+  const { surveyId } = useLocalSearchParams();
+  const [analysis, setAnalysis] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const keywords2 = [
-    { id: 1, text: "Too bright", color: "#FFB800" },
-    { id: 2, text: "Hangout", color: "#9747FF" },
-    { id: 3, text: "Cooking", color: "#FF4747" },
-    { id: 4, text: "Other", color: "#666666" },
-    { id: 5, text: "Weekend", color: "#1E7F2C" },
-  ];
+  useEffect(() => {
+    const fetchAnalysis = async () => {
+      try {
+        setLoading(true);
+        const surveyAnalysis = await analysisService.analyzeSurveyResponses(surveyId as string);
+        setAnalysis(surveyAnalysis);
+      } catch (err) {
+        console.error('Error fetching analysis:', err);
+        setError('Failed to load survey analysis. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAnalysis();
+  }, [surveyId]);
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6C4DFF" />
+          <Text style={styles.loadingText}>Analyzing survey responses...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.retryButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -35,91 +71,118 @@ export default function SurveySummaryScreen() {
         >
           <Text style={styles.closeIcon}>×</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tag Feature Summary</Text>
-        <TouchableOpacity style={styles.settingsButton}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Survey Analysis</Text>
       </View>
 
       <ScrollView style={styles.content}>
-        <View style={styles.questionCard}>
-          <Text style={styles.questionTitle}>Q1. What are your thoughts on the UI</Text>
-          <Text style={styles.subtitle}>Here's what they said...</Text>
-
-          <View style={styles.statsContainer}>
-            <View style={styles.statRow}>
-              <View style={[styles.statBar, { width: '60%' }]} />
-              <Text style={styles.statText}>60% users loved it</Text>
-            </View>
-            <View style={styles.statRow}>
-              <View style={[styles.statBar, { width: '30%' }]} />
-              <Text style={styles.statText}>30% users don't like it</Text>
-            </View>
-            <View style={styles.statRow}>
-              <View style={[styles.statBar, { width: '10%' }]} />
-              <Text style={styles.statText}>10% users kinda liked it</Text>
-            </View>
-          </View>
-
-          <Text style={styles.keywordsTitle}>Keywords</Text>
-          <View style={styles.keywordsContainer}>
-            {keywords1.map((keyword) => (
-              <View 
-                key={keyword.id}
-                style={[styles.keywordPill, { backgroundColor: keyword.color + '20' }]}
-              >
-                <View style={[styles.keywordDot, { backgroundColor: keyword.color }]} />
-                <Text style={styles.keywordText}>{keyword.text}</Text>
-              </View>
-            ))}
-          </View>
+        <View style={styles.statsHeader}>
+          <Text style={styles.statsHeaderTitle}>Survey Results</Text>
+          <Text style={styles.statsHeaderSubtitle}>
+            Based on {analysis?.totalRespondents || 0} {(analysis?.totalRespondents || 0) === 1 ? 'response' : 'responses'}
+          </Text>
         </View>
 
-        <View style={styles.questionCard}>
-          <Text style={styles.questionTitle}>Q2. What are your thoughts on the UI</Text>
-          <Text style={styles.subtitle}>Here's what they said...</Text>
+        {(analysis?.questions || []).map((question: any, index: number) => (
+          <View key={question.questionId || index} style={styles.questionCard}>
+            <Text style={styles.questionTitle}>Q{index + 1}. {question.questionText || 'Unknown Question'}</Text>
 
-          <View style={styles.statsContainer}>
-            <View style={styles.statRow}>
-              <View style={[styles.statBar, { width: '60%' }]} />
-              <Text style={styles.statText}>60% users said yes</Text>
-            </View>
-            <View style={styles.statRow}>
-              <View style={[styles.statBar, { width: '30%' }]} />
-              <Text style={styles.statText}>30% users said no</Text>
-            </View>
-          </View>
-
-          <Text style={styles.keywordsTitle}>Keywords</Text>
-          <View style={styles.keywordsContainer}>
-            {keywords2.map((keyword) => (
-              <View 
-                key={keyword.id}
-                style={[styles.keywordPill, { backgroundColor: keyword.color + '20' }]}
-              >
-                <View style={[styles.keywordDot, { backgroundColor: keyword.color }]} />
-                <Text style={styles.keywordText}>{keyword.text}</Text>
+            <View style={styles.statsContainer}>
+              <View style={styles.statRow}>
+                <View 
+                  style={[
+                    styles.statBar, 
+                    { 
+                      width: `${question.sentiment?.positive || 0}%`, 
+                      backgroundColor: '#4CAF50' 
+                    }
+                  ]} 
+                />
+                <Text style={styles.statText}>{question.sentiment?.positive || 0}% positive</Text>
               </View>
-            ))}
-            <TouchableOpacity style={styles.addKeywordButton}>
-              <Text style={styles.addKeywordText}>+</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+              <View style={styles.statRow}>
+                <View 
+                  style={[
+                    styles.statBar, 
+                    { 
+                      width: `${question.sentiment?.negative || 0}%`, 
+                      backgroundColor: '#F44336' 
+                    }
+                  ]} 
+                />
+                <Text style={styles.statText}>{question.sentiment?.negative || 0}% negative</Text>
+              </View>
+              <View style={styles.statRow}>
+                <View 
+                  style={[
+                    styles.statBar, 
+                    { 
+                      width: `${question.sentiment?.neutral || 0}%`, 
+                      backgroundColor: '#9E9E9E' 
+                    }
+                  ]} 
+                />
+                <Text style={styles.statText}>{question.sentiment?.neutral || 0}% neutral</Text>
+              </View>
+            </View>
 
-        <View style={styles.summarySection}>
-          <Text style={styles.summaryTitle}>Summary</Text>
-          <Text style={styles.summaryText}>Insights on tagging feature...</Text>
+            <Text style={styles.summaryTitle}>Summary</Text>
+            <Text style={styles.summaryText}>{question.summary || 'No summary available yet'}</Text>
+          </View>
+        ))}
+
+        <View style={styles.overallSummarySection}>
+          <Text style={styles.overallSummaryTitle}>Overall Summary</Text>
+          <Text style={styles.overallSummaryText}>
+            {analysis?.overallSummary || 'No overall summary available yet'}
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+const getKeywordColor = (index: number) => {
+  const colors = ["#FFB800", "#9747FF", "#FF4747", "#666666", "#1E7F2C"];
+  return colors[index % colors.length];
+};
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#FFFFFF",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B6B6B',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#FF4747',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: '#6C4DFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: "row",
@@ -138,12 +201,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: "600",
-  },
-  settingsButton: {
-    padding: 8,
-  },
-  settingsIcon: {
-    fontSize: 20,
   },
   content: {
     flex: 1,
@@ -178,9 +235,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statBar: {
-    height: 6,
-    backgroundColor: "#7B61FF",
-    borderRadius: 3,
+    height: 8,
+    borderRadius: 4,
     marginBottom: 4,
   },
   statText: {
@@ -199,7 +255,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 0,
+    marginBottom: 16,
   },
   keywordPill: {
     flexDirection: "row",
@@ -220,31 +276,8 @@ const styles = StyleSheet.create({
     color: "#181818",
     fontWeight: "500",
   },
-  addKeywordButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F4F0FF",
-    marginBottom: 8,
-  },
-  addKeywordText: {
-    fontSize: 18,
-    color: "#7B61FF",
-    fontWeight: "700",
-  },
-  summarySection: {
-    marginTop: 8,
-    marginBottom: 24,
-    backgroundColor: '#FFFDEB',
-    borderRadius: 16,
-    padding: 16,
-  },
   summaryTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     marginBottom: 8,
     color: "#181818",
@@ -252,6 +285,45 @@ const styles = StyleSheet.create({
   summaryText: {
     fontSize: 14,
     color: "#6B6B6B",
-    fontWeight: "400",
+    lineHeight: 20,
+  },
+  overallSummarySection: {
+    backgroundColor: '#FFFDEB',
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  overallSummaryTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 12,
+    color: "#181818",
+  },
+  overallSummaryText: {
+    fontSize: 14,
+    color: "#6B6B6B",
+    lineHeight: 20,
+  },
+  statsHeader: {
+    backgroundColor: '#F4F0FF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+  },
+  statsHeaderTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#181818',
+    marginBottom: 4,
+  },
+  statsHeaderSubtitle: {
+    fontSize: 16,
+    color: '#6B6B6B',
+  },
+  noDataText: {
+    fontSize: 14,
+    color: '#6B6B6B',
+    fontStyle: 'italic',
   },
 }); 

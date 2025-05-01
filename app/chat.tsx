@@ -1,17 +1,39 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  Alert
+} from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { chatService } from "./services/chatService";
 import { getSurveyById } from "./firebase/firebase";
 import { useAuth } from "./context/AuthContext";
+import Constants from 'expo-constants';
 
 const userAvatar = "https://randomuser.me/api/portraits/women/2.jpg";
 const noahAvatar = "https://randomuser.me/api/portraits/men/1.jpg";
+const CHAT_TIMEOUT = 10 * 60 * 1000; // 10 minutes in milliseconds
 
 interface Message {
   id: string;
   text: string;
   isUser: boolean;
+}
+
+interface Survey {
+  id: string;
+  title: string;
+  context?: string;
 }
 
 export default function ChatScreen() {
@@ -22,8 +44,10 @@ export default function ChatScreen() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [surveyTitle, setSurveyTitle] = useState<string>("");
+  const [timeLeft, setTimeLeft] = useState(CHAT_TIMEOUT);
   const scrollViewRef = useRef<ScrollView>(null);
   const { user } = useAuth();
+  const chatStartTime = useRef(Date.now());
 
   useEffect(() => {
     if (!user) {
@@ -31,6 +55,26 @@ export default function ChatScreen() {
       return;
     }
   }, [user]);
+
+  useEffect(() => {
+    // Timer countdown
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - chatStartTime.current;
+      const remaining = Math.max(0, CHAT_TIMEOUT - elapsed);
+      setTimeLeft(remaining);
+
+      if (remaining === 0) {
+        clearInterval(timer);
+        Alert.alert(
+          "Chat Time Expired",
+          "Your chat session has ended. Thank you for participating!",
+          [{ text: "OK", onPress: () => router.back() }]
+        );
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   // Initialize chat with first message
   useEffect(() => {
@@ -56,7 +100,7 @@ export default function ChatScreen() {
           setMessages(formattedMessages);
         } else {
           // If no existing messages, fetch survey data and create initial message
-          const survey = await getSurveyById(surveyId as string);
+          const survey = await getSurveyById(surveyId as string) as Survey;
           if (survey) {
             setSurveyTitle(survey.title);
             const initialMessage: Message = {
@@ -85,6 +129,12 @@ export default function ChatScreen() {
     }
   }, [messages]);
 
+  const formatTime = (ms: number) => {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   const handleSend = async () => {
     if (!inputText.trim() || !user) return;
 
@@ -110,7 +160,6 @@ export default function ChatScreen() {
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Error sending message:", error);
-      // Add error message to chat
       const errorMessage = {
         id: (Date.now() + 1).toString(),
         text: "I apologize, but I'm having trouble processing your message right now. Please try again.",
@@ -124,37 +173,43 @@ export default function ChatScreen() {
 
   if (isInitializing) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
+      <SafeAreaView style={[styles.container, styles.centerContent]}>
+        <StatusBar barStyle="dark-content" />
         <ActivityIndicator size="large" color="#7B61FF" />
         <Text style={styles.loadingText}>Loading survey...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
+      <SafeAreaView style={[styles.container, styles.centerContent]}>
+        <StatusBar barStyle="dark-content" />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity 
           style={styles.retryButton}
-          onPress={() => router.replace("../screens/UserHomeScreen.tsx")}
+          onPress={() => router.back()}
         >
           <Text style={styles.retryButtonText}>Go Back</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={80}
-    >
-      <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.replace("../screens/UserHomeScreen.tsx")}>
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={styles.backButton}
+          >
             <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
           <View style={styles.headerInfo}>
@@ -164,23 +219,23 @@ export default function ChatScreen() {
               <Text style={styles.subtitle}>{surveyTitle}</Text>
             </View>
           </View>
-          <Text style={styles.time}>10:00</Text>
+          <Text style={styles.time}>{formatTime(timeLeft)}</Text>
         </View>
 
         {/* Chat messages */}
         <ScrollView 
           ref={scrollViewRef}
           style={styles.messages} 
-          contentContainerStyle={{ paddingBottom: 16 }}
+          contentContainerStyle={styles.messagesContent}
         >
           {messages.map((message) => (
             <View key={message.id} style={styles.messageRow}>
               {!message.isUser && <Image source={{ uri: noahAvatar }} style={styles.avatarSmall} />}
-              <View style={{ flex: 1 }}>
+              <View style={styles.messageContent}>
                 {!message.isUser && <Text style={styles.sender}>Noah</Text>}
                 {message.isUser && <Text style={styles.senderRight}>You</Text>}
                 <View style={message.isUser ? styles.bubbleRight : styles.bubbleLeft}>
-                  <Text style={message.isUser ? { color: "#fff" } : {}}>{message.text}</Text>
+                  <Text style={message.isUser ? styles.textWhite : styles.textDark}>{message.text}</Text>
                 </View>
               </View>
               {message.isUser && <Image source={{ uri: userAvatar }} style={styles.avatarSmall} />}
@@ -201,7 +256,9 @@ export default function ChatScreen() {
 
         {/* Input area */}
         <View style={styles.inputRow}>
-          <TouchableOpacity><Text style={styles.plus}>+</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.plusButton}>
+            <Text style={styles.plus}>+</Text>
+          </TouchableOpacity>
           <TextInput
             style={styles.input}
             placeholder="Type a message"
@@ -209,38 +266,167 @@ export default function ChatScreen() {
             onChangeText={setInputText}
             onSubmitEditing={handleSend}
             returnKeyType="send"
-            editable={!isLoading}
+            editable={!isLoading && timeLeft > 0}
           />
-          <TouchableOpacity onPress={handleSend} disabled={isLoading}>
-            <Text style={[styles.send, isLoading && styles.sendDisabled]}>➤</Text>
+          <TouchableOpacity 
+            onPress={handleSend} 
+            disabled={isLoading || timeLeft === 0}
+            style={styles.sendButton}
+          >
+            <Text style={[styles.send, (isLoading || timeLeft === 0) && styles.sendDisabled]}>➤</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { flexDirection: "row", alignItems: "center", padding: 12, backgroundColor: "#fff" },
-  backArrow: { fontSize: 24, marginRight: 8 },
-  headerInfo: { flexDirection: "row", alignItems: "center", flex: 1 },
-  avatar: { width: 40, height: 40, borderRadius: 20, marginRight: 8 },
-  name: { fontWeight: "700", fontSize: 16 },
-  subtitle: { color: "#888", fontSize: 12 },
-  time: { color: "#888", fontSize: 14 },
-  messages: { flex: 1, padding: 12 },
-  messageRow: { flexDirection: "row", alignItems: "flex-end", marginBottom: 12 },
-  avatarSmall: { width: 32, height: 32, borderRadius: 16, marginRight: 8, marginLeft: 8 },
-  sender: { fontWeight: "600", fontSize: 13, color: "#222" },
-  senderRight: { fontWeight: "600", fontSize: 13, color: "#3B217F", textAlign: "right" },
-  bubbleLeft: { backgroundColor: "#f3f3f3", borderRadius: 16, padding: 10, marginBottom: 4, maxWidth: 220 },
-  bubbleRight: { backgroundColor: "#7B61FF", borderRadius: 16, padding: 10, marginBottom: 4, maxWidth: 220, alignSelf: "flex-end" },
-  inputRow: { flexDirection: "row", alignItems: "center", padding: 8, borderTopWidth: 1, borderColor: "#eee", backgroundColor: "#fff" },
-  plus: { fontSize: 24, color: "#7B61FF", marginHorizontal: 8 },
-  input: { flex: 1, backgroundColor: "#f3f3f3", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, fontSize: 16, marginHorizontal: 8 },
-  send: { fontSize: 24, color: "#7B61FF", marginHorizontal: 8 },
-  sendDisabled: { color: "#ccc" },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#fff",
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  header: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    padding: 16,
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight || 16 : 16,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  backButton: {
+    padding: 8,
+  },
+  backArrow: { 
+    fontSize: 24, 
+    color: "#7B61FF",
+  },
+  headerInfo: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    flex: 1, 
+    marginLeft: 8,
+  },
+  avatar: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    marginRight: 12,
+  },
+  name: { 
+    fontWeight: "700", 
+    fontSize: 16, 
+    color: "#232B3A",
+  },
+  subtitle: { 
+    color: "#6B6B6B", 
+    fontSize: 13,
+  },
+  time: { 
+    color: "#7B61FF", 
+    fontSize: 14, 
+    fontWeight: "600",
+  },
+  messages: { 
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+  },
+  messagesContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  messageRow: { 
+    flexDirection: "row", 
+    alignItems: "flex-end", 
+    marginBottom: 16,
+  },
+  messageContent: {
+    flex: 1,
+    maxWidth: "70%",
+  },
+  avatarSmall: { 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
+    marginHorizontal: 8,
+  },
+  sender: { 
+    fontWeight: "600", 
+    fontSize: 13, 
+    color: "#232B3A", 
+    marginBottom: 4,
+    marginLeft: 4,
+  },
+  senderRight: { 
+    fontWeight: "600", 
+    fontSize: 13, 
+    color: "#7B61FF", 
+    textAlign: "right",
+    marginBottom: 4,
+    marginRight: 4,
+  },
+  bubbleLeft: { 
+    backgroundColor: "#fff", 
+    borderRadius: 20, 
+    padding: 12,
+    paddingRight: 16,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+  },
+  bubbleRight: { 
+    backgroundColor: "#7B61FF", 
+    borderRadius: 20, 
+    padding: 12,
+    paddingLeft: 16,
+    alignSelf: "flex-end",
+  },
+  textWhite: {
+    color: "#fff",
+  },
+  textDark: {
+    color: "#232B3A",
+  },
+  inputRow: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    padding: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  plusButton: {
+    padding: 8,
+  },
+  plus: { 
+    fontSize: 24, 
+    color: "#7B61FF",
+  },
+  input: { 
+    flex: 1, 
+    backgroundColor: "#F5F7FA", 
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontSize: 16,
+    marginHorizontal: 8,
+    maxHeight: 100,
+    minHeight: 40,
+  },
+  sendButton: {
+    padding: 8,
+  },
+  send: { 
+    fontSize: 24, 
+    color: "#7B61FF",
+  },
+  sendDisabled: { 
+    color: "#ccc",
+  },
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
